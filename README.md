@@ -6,8 +6,6 @@ It is recommended to fork this project and adjust the job queue to your own need
 To create a fast queue, Postgres `SKIP LOCKED` feature is used. The technique is 
 described [here](https://robinverton.de/blog/queueing-with-postgresql-and-go).
 
-To make this method fault tolerant,
-
 ## Example usage
 
 A complete, runnable examples can be found under `./example/`.
