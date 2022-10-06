@@ -121,7 +121,7 @@ func (j *JobQueue) Dequeue(ctx context.Context, queues []string) error {
               j.created_at
             FOR UPDATE SKIP LOCKED
           LIMIT 1)
-        RETURNING type_name, data
+        RETURNING id, type_name, data
     `
 
 	row := j.db.QueryRowContext(
@@ -131,7 +131,7 @@ func (j *JobQueue) Dequeue(ctx context.Context, queues []string) error {
 		JOB_STATUS_SCHEDULED,
 		pq.Array(queues),
 	)
-	err := row.Scan(&job.TypeName, &job.Data)
+	err := row.Scan(&job.Id, &job.TypeName, &job.Data)
 	if err == sql.ErrNoRows {
 		return nil
 	} else if err != nil {
@@ -155,7 +155,19 @@ func (j *JobQueue) Dequeue(ctx context.Context, queues []string) error {
 	}
 
 	// execute job
-	return loadedJob.Perform(1)
+	err = loadedJob.Perform(1)
+	if err != nil {
+		// TODO: add retry handling and save error to job row
+		_, err = j.db.ExecContext(ctx, `UPDATE jobs SET status = $1, finished_at = NOW(), error = $3 WHERE id = $2`, JOB_STATUS_FAILED, job.Id, err.Error())
+		return err
+	}
+
+	_, err = j.db.ExecContext(ctx, `UPDATE jobs SET status = $1, finished_at = NOW() WHERE id = $2`, JOB_STATUS_FINISHED, job.Id)
+	if err != nil {
+		return fmt.Errorf("failed updating job status: %w", err)
+	}
+
+	return nil
 }
 
 func (j *JobQueue) Worker(ctx context.Context, queues []string, types ...interface{}) error {
