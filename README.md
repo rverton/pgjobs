@@ -54,8 +54,9 @@ import (
 	"log"
 	"os"
 
+	"database/sql"
 	_ "github.com/jackc/pgx/v5/stdlib"
-	"github.com/jmoiron/sqlx"
+    
 	"github.com/rverton/pgjobs"
 )
 
@@ -86,3 +87,9 @@ func main() {
 	}
 }
 ```
+
+## ToDo
+
+* [ ] Remove `github.com/lib/pq` dependency
+* [ ] Implement `attempt` handling
+* [ ] Add error handling and retries?
