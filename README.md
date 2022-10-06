@@ -3,9 +3,16 @@
 This project aims to be a blueprint for your own job queue solution with Go and PostgreSQL.
 It is recommended to fork this project and adjust the job queue to your own needs.
 
+To create a fast queue, Postgres `SKIP LOCKED` feature is used. The technique is 
+described [here](https://robinverton.de/blog/queueing-with-postgresql-and-go).
+
+To make this method fault tolerant,
+
 ## Example usage
 
-First define a job, for example `jobs/emailUser.go`:
+A complete, runnable examples can be found under `./example/`.
+
+First define a `pgjobs.Job`, for example in `./jobs/emailUser.go`:
 
 ```go
 package jobs
@@ -27,13 +34,13 @@ func NewEmailUser(email string) *EmailUser {
 	}
 }
 
-// the task which should be performed
+// the action which should be executed
 func (e EmailUser) Perform(attempt int32) error {
 	log.Printf("emailing %v, attempt=%v", e.Email, attempt)
 	return nil
 }
 
-// boilerplate code, you do not need to modify anything here
+// this is boilerplate code and does not need to be modified
 func (e EmailUser) Load(data string) (pgjobs.Job, error) {
 	var n EmailUser
 	err := json.Unmarshal([]byte(data), &n)
@@ -47,24 +54,21 @@ You can then setup a queue, (optionally) enforce the jobs table schema, and work
 package main
 
 import (
-	"myproject/jobs"
 	"context"
-	"flag"
-	"fmt"
+	"database/sql"
+	"example/jobs"
 	"log"
 	"os"
 
-	"database/sql"
 	_ "github.com/jackc/pgx/v5/stdlib"
-    
 	"github.com/rverton/pgjobs"
 )
 
 func main() {
-    db, err := sql.Open("postgres", connStr)
-    if err != nil {
-        log.Fatal(err)
-    }
+	db, err := sql.Open("postgres", os.Getenv("DB_URL"))
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	ctx := context.Background()
 
@@ -74,7 +78,7 @@ func main() {
 		panic(err)
 	}
 
-	// example to enqueue a job
+	// enequeue an example job
 	job := jobs.NewEmailUser("foo@example.com")
 	if err = queue.Enqueue(context.Background(), job, "default"); err != nil {
 		log.Printf("error enqueueing: %v", err)
@@ -91,5 +95,6 @@ func main() {
 ## ToDo
 
 * [ ] Remove `github.com/lib/pq` dependency
+* [ ] Make job processing more robust by using a transaction
 * [ ] Implement `attempt` handling
 * [ ] Add error handling and retries?
