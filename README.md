@@ -8,6 +8,11 @@ By using Postgres `SKIP LOCKED` feature, this allows to make a performant,
 non-blocking and independent queue. The technique is described
 [here](https://robinverton.de/blog/queueing-with-postgresql-and-go) and [here](https://www.crunchydata.com/blog/message-queuing-using-native-postgresql).
 
+* Performat: Non-blocking queue mechanism
+* Robust: Jobs will be 'freed' again when a worker crashes
+* Failed jobs will be retried until `MAX_RETRIES`, current attempt is passed as argument
+* Support for multiple queues
+
 ## Example usage
 
 A complete, runnable examples can be found under `./example/`.
@@ -98,3 +103,5 @@ func main() {
 * [X] Implement `attempt` handling
 * [X] Add error handling and retries?
 * [ ] Remove `github.com/lib/pq` dependency
+* [ ] Add scheduled execution
+* [ ] Add priority queuing
