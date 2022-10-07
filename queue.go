@@ -17,6 +17,8 @@ const (
 	JOB_STATUS_PROCESSING = "processing"
 	JOB_STATUS_FINISHED   = "finished"
 	JOB_STATUS_FAILED     = "failed"
+
+	MAX_RETRY = 3
 )
 
 var PollInterval = 1 * time.Second
@@ -33,6 +35,7 @@ type jobRaw struct {
 	Queue    string
 	Data     string
 	Error    string
+	Attempt  int32
 
 	CreatedAt  time.Time
 	StartedAt  time.Time
@@ -63,6 +66,7 @@ func (j *JobQueue) SetupSchema(ctx context.Context) error {
         data text NOT NULL,
 
         error text,
+        attempt int default 0,
 
         created_at  timestamp not null default now(),
         started_at  timestamp,
@@ -109,29 +113,38 @@ func (j *JobQueue) Dequeue(ctx context.Context, queues []string) error {
           jobs
         SET
           status = $1,
-          started_at = now()
+          started_at = now(),
+          attempt = attempt + 1
         WHERE
-          id IN(
+          id IN (
             SELECT
               id FROM jobs j
             WHERE
-              j.status = $2 
-              and j.queue = any($3)
+              j.status = $2 or (j.status = $3 and j.attempt < $4)
+              and j.queue = any($5)
             ORDER BY
               j.created_at
             FOR UPDATE SKIP LOCKED
           LIMIT 1)
-        RETURNING id, type_name, data
+        RETURNING id, type_name, data, attempt
     `
 
-	row := j.db.QueryRowContext(
+	tx, err := j.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	row := tx.QueryRowContext(
 		ctx,
 		sqlStmt,
-		JOB_STATUS_PROCESSING,
+		JOB_STATUS_FINISHED,
 		JOB_STATUS_SCHEDULED,
+		JOB_STATUS_FAILED,
+		MAX_RETRY,
 		pq.Array(queues),
 	)
-	err := row.Scan(&job.Id, &job.TypeName, &job.Data)
+	err = row.Scan(&job.Id, &job.TypeName, &job.Data, &job.Attempt)
 	if err == sql.ErrNoRows {
 		return nil
 	} else if err != nil {
@@ -155,19 +168,19 @@ func (j *JobQueue) Dequeue(ctx context.Context, queues []string) error {
 	}
 
 	// execute job
-	err = loadedJob.Perform(1)
+	err = loadedJob.Perform(int32(job.Attempt))
 	if err != nil {
 		// TODO: add retry handling and save error to job row
-		_, err = j.db.ExecContext(ctx, `UPDATE jobs SET status = $1, finished_at = NOW(), error = $3 WHERE id = $2`, JOB_STATUS_FAILED, job.Id, err.Error())
-		return err
+		_, err = tx.ExecContext(ctx, `UPDATE jobs SET status = $1, finished_at = NOW(), error = $3 WHERE id = $2`, JOB_STATUS_FAILED, job.Id, err.Error())
+		return tx.Commit()
 	}
 
-	_, err = j.db.ExecContext(ctx, `UPDATE jobs SET status = $1, finished_at = NOW() WHERE id = $2`, JOB_STATUS_FINISHED, job.Id)
+	_, err = tx.ExecContext(ctx, `UPDATE jobs SET status = $1, finished_at = NOW() WHERE id = $2`, JOB_STATUS_FINISHED, job.Id)
 	if err != nil {
 		return fmt.Errorf("failed updating job status: %w", err)
 	}
 
-	return nil
+	return tx.Commit()
 }
 
 func (j *JobQueue) Worker(ctx context.Context, queues []string, types ...interface{}) error {

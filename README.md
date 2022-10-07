@@ -93,6 +93,5 @@ func main() {
 ## ToDo
 
 * [ ] Remove `github.com/lib/pq` dependency
-* [ ] Make job processing more robust by using a transaction
 * [ ] Implement `attempt` handling
 * [ ] Add error handling and retries?
