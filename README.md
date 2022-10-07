@@ -1,10 +1,12 @@
 # pgjobs, a dead simple postgres job queueing mechanism
 
-This project aims to be a blueprint for your own job queue solution with Go and PostgreSQL.
-It is recommended to fork this project and adjust the job queue to your own needs.
+This project aims to be a blueprint for your own job queue solution with Go and
+PostgreSQL. It is recommended to fork this project and adjust the job queue with
+features to your own needs.
 
-To create a fast queue, Postgres `SKIP LOCKED` feature is used. The technique is 
-described [here](https://robinverton.de/blog/queueing-with-postgresql-and-go).
+By using Postgres `SKIP LOCKED` feature, this allows to make a performant,
+non-blocking and independent queue. The technique is described
+[here](https://robinverton.de/blog/queueing-with-postgresql-and-go) and [here](https://www.crunchydata.com/blog/message-queuing-using-native-postgresql).
 
 ## Example usage
 
@@ -92,6 +94,7 @@ func main() {
 
 ## ToDo
 
+* [X] Make job processing more robust by using a transaction
+* [X] Implement `attempt` handling
+* [X] Add error handling and retries?
 * [ ] Remove `github.com/lib/pq` dependency
-* [ ] Implement `attempt` handling
-* [ ] Add error handling and retries?
