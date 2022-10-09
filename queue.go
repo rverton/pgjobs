@@ -68,15 +68,41 @@ func (j *JobQueue) SetupSchema(ctx context.Context) error {
         error text,
         attempt int default 0,
 
-        created_at  timestamp not null default now(),
-        started_at  timestamp,
-        finished_at timestamp
+        created_at    timestamp not null default now(),
+        scheduled_at  timestamp,
+        started_at    timestamp,
+        finished_at   timestamp
     );
 
     CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status);
     CREATE INDEX IF NOT EXISTS idx_jobs_queue ON jobs(queue);`
 	_, err := j.db.ExecContext(ctx, schema)
 	return err
+}
+
+func (j *JobQueue) EnqueueAt(ctx context.Context, job Job, queue string, at time.Time) error {
+	log.Printf("queue: enqueing queue=%v job=%+v", queue, job)
+
+	typeName := j.typeName(job)
+
+	data, err := json.Marshal(job)
+	if err != nil {
+		return fmt.Errorf("queue: failed marshaling: %v", err)
+	}
+
+	if _, err = j.db.ExecContext(
+		ctx,
+		`INSERT INTO jobs (type_name, status, queue, data, scheduled_at) VALUES ($1, $2, $3, $4, $5)`,
+		typeName,
+		JOB_STATUS_SCHEDULED,
+		queue,
+		data,
+		at,
+	); err != nil {
+		return fmt.Errorf("queue: failed inserting job: %w", err)
+	}
+
+	return nil
 }
 
 func (j *JobQueue) Enqueue(ctx context.Context, job Job, queue string) error {
@@ -120,10 +146,11 @@ func (j *JobQueue) Dequeue(ctx context.Context, queues []string) error {
             SELECT
               id FROM jobs j
             WHERE
-              j.status = $2 or (j.status = $3 and j.attempt < $4)
-              and j.queue = any($5)
+              (j.status = $2 or (j.status = $3 and j.attempt < $4))
+              AND j.queue = any($5)
+              AND (j.scheduled_at is null or (j.scheduled_at <= now()))
             ORDER BY
-              j.created_at
+              j.scheduled_at, j.created_at
             FOR UPDATE SKIP LOCKED
           LIMIT 1)
         RETURNING id, type_name, data, attempt

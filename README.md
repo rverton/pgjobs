@@ -11,6 +11,7 @@ non-blocking and independent queue. The technique is described
 * Performat: Non-blocking queue mechanism
 * Robust: Jobs will be 'freed' again when a worker crashes
 * Failed jobs will be retried until `MAX_RETRIES`, current attempt is passed as argument
+* Schedule jobs for later execution with `EnqueueAt(ctx, job, "queuename", timeAt)`
 * Support for multiple queues
 
 ## Example usage
@@ -83,9 +84,15 @@ func main() {
 		panic(err)
 	}
 
-	// enequeue an example job
 	job := jobs.NewEmailUser("foo@example.com")
+    
+	// enequeue an example job for immediate execution
 	if err = queue.Enqueue(context.Background(), job, "default"); err != nil {
+		log.Printf("error enqueueing: %v", err)
+	}
+    
+	// enequeue an example job for execution in 10s+
+	if err = queue.EnqueueAt(context.Background(), job, "default", time.Now().Add(10*time.Second)); err != nil {
 		log.Printf("error enqueueing: %v", err)
 	}
 
@@ -102,6 +109,6 @@ func main() {
 * [X] Make job processing more robust by using a transaction
 * [X] Implement `attempt` handling
 * [X] Add error handling and retries?
+* [X] Add scheduled execution
 * [ ] Remove `github.com/lib/pq` dependency
-* [ ] Add scheduled execution
 * [ ] Add priority queuing
