@@ -199,6 +199,9 @@ func (j *JobQueue) Dequeue(ctx context.Context, queues []string) error {
 	if err != nil {
 		// TODO: add retry handling and save error to job row
 		_, err = tx.ExecContext(ctx, `UPDATE jobs SET status = $1, finished_at = NOW(), error = $3 WHERE id = $2`, JOB_STATUS_FAILED, job.Id, err.Error())
+		if err != nil {
+			return err
+		}
 		return tx.Commit()
 	}
 
@@ -218,14 +221,20 @@ func (j *JobQueue) Worker(ctx context.Context, queues []string, types ...interfa
 		j.registerType(t)
 	}
 
+	tm := time.NewTicker(PollInterval)
+	defer tm.Stop()
 	for {
-		if err := j.Dequeue(ctx, queues); err != nil {
-			log.Printf("queue: dequeue failed: %v", err)
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-tm.C:
+			if err := j.Dequeue(ctx, queues); err != nil {
+				log.Printf("queue: dequeue failed: %v", err)
+			}
 		}
-		time.Sleep(PollInterval)
 	}
-
 }
+
 
 func (j *JobQueue) typeName(typedNil interface{}) string {
 	t := reflect.TypeOf(typedNil).Elem()
