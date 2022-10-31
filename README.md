@@ -13,6 +13,7 @@ non-blocking and independent queue. The technique is described
 * Failed jobs will be retried until `MAX_RETRIES`, current attempt is passed as argument
 * Schedule jobs for later execution with `EnqueueAt(ctx, job, "queuename", timeAt)`
 * Support for multiple queues
+* Zero dependency
 
 ## Example usage
 
@@ -103,6 +104,10 @@ func main() {
 	}
 }
 ```
+
+## Configuration
+
+* The polling interval for workers can be adjusted via `pgjobs.PollInterval`.
 
 ## ToDo
 

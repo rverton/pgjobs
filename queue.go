@@ -1,6 +1,7 @@
 package pgjobs
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -8,15 +9,12 @@ import (
 	"log"
 	"reflect"
 	"time"
-
-	"github.com/lib/pq"
 )
 
 const (
-	JOB_STATUS_SCHEDULED  = "new"
-	JOB_STATUS_PROCESSING = "processing"
-	JOB_STATUS_FINISHED   = "finished"
-	JOB_STATUS_FAILED     = "failed"
+	JOB_STATUS_SCHEDULED = "new"
+	JOB_STATUS_FINISHED  = "finished"
+	JOB_STATUS_FAILED    = "failed"
 
 	MAX_RETRY = 3
 )
@@ -162,6 +160,11 @@ func (j *JobQueue) Dequeue(ctx context.Context, queues []string) error {
 	}
 	defer tx.Rollback()
 
+	queueArray, err := pqArray(queues)
+	if err != nil {
+		return err
+	}
+
 	row := tx.QueryRowContext(
 		ctx,
 		sqlStmt,
@@ -169,7 +172,7 @@ func (j *JobQueue) Dequeue(ctx context.Context, queues []string) error {
 		JOB_STATUS_SCHEDULED,
 		JOB_STATUS_FAILED,
 		MAX_RETRY,
-		pq.Array(queues),
+		queueArray,
 	)
 	err = row.Scan(&job.Id, &job.TypeName, &job.Data, &job.Attempt)
 	if err == sql.ErrNoRows {
@@ -248,4 +251,42 @@ func (j *JobQueue) getType(name string) (Job, error) {
 	t := reflect.New(item).Elem().Interface().(Job)
 
 	return t, nil
+}
+
+// pqArray and appendArrayQuotedBytes func extracted from https://github.com/lib/pq
+// to remove dependency on lib/pq
+func pqArray(a []string) (string, error) {
+	if n := len(a); n > 0 {
+		// There will be at least two curly brackets, 2*N bytes of quotes,
+		// and N-1 bytes of delimiters.
+		b := make([]byte, 1, 1+3*n)
+		b[0] = '{'
+
+		b = appendArrayQuotedBytes(b, []byte(a[0]))
+		for i := 1; i < n; i++ {
+			b = append(b, ',')
+			b = appendArrayQuotedBytes(b, []byte(a[i]))
+		}
+
+		return string(append(b, '}')), nil
+	}
+
+	return "{}", nil
+}
+
+func appendArrayQuotedBytes(b, v []byte) []byte {
+	b = append(b, '"')
+	for {
+		i := bytes.IndexAny(v, `"\`)
+		if i < 0 {
+			b = append(b, v...)
+			break
+		}
+		if i > 0 {
+			b = append(b, v[:i]...)
+		}
+		b = append(b, '\\', v[i])
+		v = v[i+1:]
+	}
+	return append(b, '"')
 }
