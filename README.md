@@ -108,6 +108,7 @@ func main() {
 ## Configuration
 
 * The polling interval for workers can be adjusted via `pgjobs.PollInterval`.
+* For all other configuration, it is currently recommended to create a fork and adjust as needed.
 
 ## ToDo
 
@@ -115,5 +116,6 @@ func main() {
 * [X] Implement `attempt` handling
 * [X] Add error handling and retries?
 * [X] Add scheduled execution
-* [ ] Remove `github.com/lib/pq` dependency
+* [X] Remove `github.com/lib/pq` dependency
+* [ ] Add more tests (dequeing, reflection)
 * [ ] Add priority queuing

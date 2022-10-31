@@ -20,6 +20,7 @@ const (
 )
 
 var PollInterval = 1 * time.Second
+var JobsTableName = "_jobs"
 
 type Job interface {
 	Perform(attempt int32) error
@@ -54,8 +55,8 @@ func NewQueue(db *sql.DB) *JobQueue {
 }
 
 func (j *JobQueue) SetupSchema(ctx context.Context) error {
-	schema := `
-    CREATE TABLE IF NOT EXISTS jobs (
+	schema := fmt.Sprintf(`
+    CREATE TABLE IF NOT EXISTS %v (
         id serial primary key,
 
         type_name text NOT NULL,
@@ -72,8 +73,8 @@ func (j *JobQueue) SetupSchema(ctx context.Context) error {
         finished_at   timestamp
     );
 
-    CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status);
-    CREATE INDEX IF NOT EXISTS idx_jobs_queue ON jobs(queue);`
+    CREATE INDEX IF NOT EXISTS idx_jobs_status ON %v(status);
+    CREATE INDEX IF NOT EXISTS idx_jobs_queue ON %v(queue);`, JobsTableName, JobsTableName, JobsTableName)
 	_, err := j.db.ExecContext(ctx, schema)
 	return err
 }
@@ -90,7 +91,7 @@ func (j *JobQueue) EnqueueAt(ctx context.Context, job Job, queue string, at time
 
 	if _, err = j.db.ExecContext(
 		ctx,
-		`INSERT INTO jobs (type_name, status, queue, data, scheduled_at) VALUES ($1, $2, $3, $4, $5)`,
+		`INSERT INTO `+JobsTableName+` (type_name, status, queue, data, scheduled_at) VALUES ($1, $2, $3, $4, $5)`,
 		typeName,
 		JOB_STATUS_SCHEDULED,
 		queue,
@@ -115,7 +116,7 @@ func (j *JobQueue) Enqueue(ctx context.Context, job Job, queue string) error {
 
 	if _, err = j.db.ExecContext(
 		ctx,
-		`INSERT INTO jobs (type_name, status, queue, data) VALUES ($1, $2, $3, $4)`,
+		`INSERT INTO `+JobsTableName+` (type_name, status, queue, data) VALUES ($1, $2, $3, $4)`,
 		typeName,
 		JOB_STATUS_SCHEDULED,
 		queue,
@@ -134,7 +135,7 @@ func (j *JobQueue) Dequeue(ctx context.Context, queues []string) error {
 
 	sqlStmt := ` 
         UPDATE
-          jobs
+          ` + JobsTableName + `
         SET
           status = $1,
           started_at = now(),
@@ -142,7 +143,7 @@ func (j *JobQueue) Dequeue(ctx context.Context, queues []string) error {
         WHERE
           id IN (
             SELECT
-              id FROM jobs j
+              id FROM ` + JobsTableName + ` j
             WHERE
               (j.status = $2 or (j.status = $3 and j.attempt < $4))
               AND j.queue = any($5)
@@ -201,14 +202,14 @@ func (j *JobQueue) Dequeue(ctx context.Context, queues []string) error {
 	err = loadedJob.Perform(int32(job.Attempt))
 	if err != nil {
 		// TODO: add retry handling and save error to job row
-		_, err = tx.ExecContext(ctx, `UPDATE jobs SET status = $1, finished_at = NOW(), error = $3 WHERE id = $2`, JOB_STATUS_FAILED, job.Id, err.Error())
+		_, err = tx.ExecContext(ctx, `UPDATE `+JobsTableName+` SET status = $1, finished_at = NOW(), error = $3 WHERE id = $2`, JOB_STATUS_FAILED, job.Id, err.Error())
 		if err != nil {
 			return err
 		}
 		return tx.Commit()
 	}
 
-	_, err = tx.ExecContext(ctx, `UPDATE jobs SET status = $1, finished_at = NOW() WHERE id = $2`, JOB_STATUS_FINISHED, job.Id)
+	_, err = tx.ExecContext(ctx, `UPDATE `+JobsTableName+` SET status = $1, finished_at = NOW() WHERE id = $2`, JOB_STATUS_FINISHED, job.Id)
 	if err != nil {
 		return fmt.Errorf("failed updating job status: %w", err)
 	}
@@ -237,7 +238,6 @@ func (j *JobQueue) Worker(ctx context.Context, queues []string, types ...interfa
 		}
 	}
 }
-
 
 func (j *JobQueue) typeName(typedNil interface{}) string {
 	t := reflect.TypeOf(typedNil).Elem()
