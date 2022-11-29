@@ -80,8 +80,6 @@ func (j *JobQueue) SetupSchema(ctx context.Context) error {
 }
 
 func (j *JobQueue) EnqueueAt(ctx context.Context, job Job, queue string, at time.Time) error {
-	log.Printf("queue: enqueing queue=%v job=%+v", queue, job)
-
 	typeName := j.typeName(job)
 
 	data, err := json.Marshal(job)
@@ -129,8 +127,6 @@ func (j *JobQueue) Enqueue(ctx context.Context, job Job, queue string) error {
 }
 
 func (j *JobQueue) Dequeue(ctx context.Context, queues []string) error {
-	log.Printf("queue: dequeuing queues=%v", queues)
-
 	var job jobRaw
 
 	sqlStmt := ` 
@@ -189,7 +185,16 @@ func (j *JobQueue) Dequeue(ctx context.Context, queues []string) error {
 	// get original go type based on type name
 	jobType, err := j.getType(job.TypeName)
 	if err != nil {
-		return fmt.Errorf("unable to find related job task: %v", err)
+		_, err = tx.ExecContext(ctx, `UPDATE `+JobsTableName+` SET status = $1, finished_at = NOW(), error = $3 WHERE id = $2`, JOB_STATUS_FAILED, job.Id, err.Error())
+		if err != nil {
+			return fmt.Errorf("unable to exec error for failed job", err)
+		}
+
+		if err = tx.Commit(); err != nil {
+			return fmt.Errorf("unable to commit error for failed job", err)
+		}
+
+		return fmt.Errorf("unable to find related job '%v': %v", job.TypeName, err)
 	}
 
 	// create a new object by unmarshaling the job data
@@ -233,7 +238,7 @@ func (j *JobQueue) Worker(ctx context.Context, queues []string, types ...interfa
 			return ctx.Err()
 		case <-tm.C:
 			if err := j.Dequeue(ctx, queues); err != nil {
-				log.Printf("queue: dequeue failed: %v", err)
+				log.Println("queue: dequeue failed", err)
 			}
 		}
 	}
