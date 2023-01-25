@@ -98,6 +98,7 @@ func main() {
 	}
 
 	// start worker and pass all processable jobs
+    // note: this worker will only process the passed jobs
 	queues := []string{"default"}
 	if err := queue.Worker(ctx, queues, &jobs.EmailUser{}); err != nil {
 		log.Println(err)

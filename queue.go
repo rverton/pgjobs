@@ -143,6 +143,7 @@ func (j *JobQueue) Dequeue(ctx context.Context, queues []string) error {
             WHERE
               (j.status = $2 or (j.status = $3 and j.attempt < $4))
               AND j.queue = any($5)
+              AND j.type_name = any($6) 
               AND (j.scheduled_at is null or (j.scheduled_at <= now()))
             ORDER BY
               j.scheduled_at, j.created_at
@@ -162,6 +163,11 @@ func (j *JobQueue) Dequeue(ctx context.Context, queues []string) error {
 		return err
 	}
 
+	typesArray, err := pqArray(mapKeys(j.typeRegistry))
+	if err != nil {
+		return err
+	}
+
 	row := tx.QueryRowContext(
 		ctx,
 		sqlStmt,
@@ -170,6 +176,7 @@ func (j *JobQueue) Dequeue(ctx context.Context, queues []string) error {
 		JOB_STATUS_FAILED,
 		MAX_RETRY,
 		queueArray,
+		typesArray,
 	)
 	err = row.Scan(&job.Id, &job.TypeName, &job.Data, &job.Attempt)
 	if err == sql.ErrNoRows {
@@ -303,4 +310,12 @@ func appendArrayQuotedBytes(b, v []byte) []byte {
 		v = v[i+1:]
 	}
 	return append(b, '"')
+}
+
+func mapKeys[K comparable, V any](m map[K]V) []K {
+	keys := make([]K, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	return keys
 }
