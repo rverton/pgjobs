@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log"
 	"reflect"
+	"strings"
 	"time"
 )
 
@@ -252,8 +253,12 @@ func (j *JobQueue) Worker(ctx context.Context, queues []string, types ...interfa
 }
 
 func (j *JobQueue) typeName(typedNil interface{}) string {
-	t := reflect.TypeOf(typedNil).Elem()
-	return t.PkgPath() + "." + t.Name()
+	name := reflect.TypeOf(typedNil).String()
+	if strings.HasPrefix(name, "*") {
+		name = name[1:]
+	}
+
+	return name
 }
 
 func (j *JobQueue) registerType(typedNil interface{}) {
