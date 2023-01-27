@@ -9,6 +9,7 @@ import (
 	"log"
 	"reflect"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -45,6 +46,7 @@ type jobRaw struct {
 type JobQueue struct {
 	db *sql.DB
 
+	mutex        sync.Mutex
 	typeRegistry map[string]reflect.Type
 }
 
@@ -264,6 +266,9 @@ func (j *JobQueue) typeName(typedNil interface{}) string {
 func (j *JobQueue) registerType(typedNil interface{}) {
 	t := reflect.TypeOf(typedNil).Elem()
 	name := j.typeName(typedNil)
+
+	j.mutex.Lock()
+	defer j.mutex.Unlock()
 	j.typeRegistry[name] = t
 }
 
